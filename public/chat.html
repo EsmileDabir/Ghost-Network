@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat Room</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+    }
+
+    #chat-box {
+      height: 400px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      overflow-y: scroll;
+      background-color: #fff;
+    }
+
+    #msg {
+      width: 80%;
+      padding: 8px;
+      margin-top: 10px;
+    }
+
+    #send-btn {
+      padding: 8px 16px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Welcome to the GhostRoom</h2>
+  <div id="chat-box"></div>
+
+  <input type="text" id="msg" placeholder="Type your message here..." />
+  <button id="send-btn">Send</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // Get query params from URL (e.g., ?room=123456)
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get("room");
+
+    // Get session data
+    const name = sessionStorage.getItem("name") || "Guest";
+    const isCreator = sessionStorage.getItem("isCreator") === "true";
+
+    if (!room) {
+      alert("Room ID not found!");
+      window.location.href = "rooms.html"; // Redirect back
+    }
+
+    // Alert room ID to admin only
+    if (isCreator) {
+      alert("Room ID (visible to Admin only): " + room);
+    }
+
+    // Join room
+    socket.emit("join-room", { room, name, isCreator });
+
+    // Receive message from server
+    socket.on("message", ({ name, message }) => {
+      const chatBox = document.getElementById("chat-box");
+      const msgElement = document.createElement("p");
+      msgElement.innerHTML = `<strong>${name}:</strong> ${message}`;
+      chatBox.appendChild(msgElement);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    // Send message
+    document.getElementById("send-btn").addEventListener("click", () => {
+      const input = document.getElementById("msg");
+      const message = input.value.trim();
+      if (message !== "") {
+        socket.emit("send-message", { room, name, message });
+        input.value = "";
+      }
+    });
+
+    // Optionally send on Enter key press
+    document.getElementById("msg").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        document.getElementById("send-btn").click();
+      }
+    });
+  </script>
+</body>
+</html>

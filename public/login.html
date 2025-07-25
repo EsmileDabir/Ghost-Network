@@ -1,0 +1,17 @@
+<!-- login.html -->
+<input type="text" id="name" placeholder="Enter your name" />
+<select id="role">
+  <option value="student">Student</option>
+  <option value="admin">Admin</option>
+</select>
+<button onclick="login()">Enter</button>
+
+<script>
+  function login() {
+    const name = document.getElementById("name").value;
+    const role = document.getElementById("role").value;
+    sessionStorage.setItem("name", name);
+    sessionStorage.setItem("role", role);
+    window.location.href = "rooms.html";
+  }
+</script>
