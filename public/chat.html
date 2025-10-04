@@ -51,32 +51,28 @@
     }
 
     // Message tracking to prevent duplicates
-   
-   const messageTracker = {
-  messages: new Map(),
-  
-  addMessage: function(sender, content, time) {
-    const id = `${sender}-${content}-${time}`;
-    const now = Date.now();
-    
-    // Clean up old messages (older than 10 seconds)
-    for (const [key, timestamp] of this.messages.entries()) {
-      if (now - timestamp > 10000) {
-        this.messages.delete(key);
+    const messageTracker = {
+      messages: new Map(),
+      
+      addMessage: function(sender, content, time) {
+        const id = `${sender}-${content}-${time}`;
+        const now = Date.now();
+        
+        // Clean up old messages (older than 10 seconds)
+        for (const [key, timestamp] of this.messages.entries()) {
+          if (now - timestamp > 10000) {
+            this.messages.delete(key);
+          }
+        }
+        
+        if (this.messages.has(id)) {
+          return false;
+        }
+        
+        this.messages.set(id, now);
+        return true;
       }
-    }
-    
-    if (this.messages.has(id)) {
-      return false;
-    }
-    
-    this.messages.set(id, now);
-    return true;
-  }
-};
-
-// Update the message handler to use the tracker
-
+    };
 
     // Join room with creator token if applicable
     socket.emit("join-room", { 
@@ -85,6 +81,9 @@
       isCreator, 
       creatorToken: name.toLowerCase() === "pain" ? creatorToken : null 
     });
+
+    // Debug: Check room joining
+    console.log("🔄 Joining room:", room, "as user:", name);
 
     // Listen for username errors
     socket.on("username-error", ({ error }) => {
@@ -100,10 +99,51 @@
 
     // Listen for join success
     socket.on("join-success", () => {
-      console.log("Successfully joined room");
+      console.log("✅ Successfully joined room:", room);
+      enableChatInput();
+    });
+
+    // Listen for join pending (private rooms)
+    socket.on("join-pending", ({ message }) => {
+      console.log("⏳ Join pending:", message);
+      document.getElementById("chat-box").innerHTML += `
+        <div class="message system">
+          <div class="text">${message}</div>
+          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+        </div>
+      `;
+    });
+
+    // Listen for join approved
+    socket.on("join-approved", ({ room, name }) => {
+      console.log("✅ Join approved for room:", room);
+      enableChatInput();
+      document.getElementById("chat-box").innerHTML += `
+        <div class="message system">
+          <div class="text">Your join request was approved! You can now chat.</div>
+          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+        </div>
+      `;
+    });
+
+    // Listen for join rejected
+    socket.on("join-rejected", ({ room, reason }) => {
+      console.log("❌ Join rejected:", reason);
+      document.getElementById("chat-box").innerHTML += `
+        <div class="message system">
+          <div class="text">Join request rejected: ${reason}</div>
+          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+        </div>
+      `;
+    });
+
+    // Enable chat input function
+    function enableChatInput() {
       document.getElementById("msg").disabled = false;
       document.getElementById("send-btn").disabled = false;
-    });
+      document.getElementById("msg").placeholder = "Type your message here...";
+      console.log("💬 Chat input enabled");
+    }
 
     // Listen for message history
     socket.on("message-history", (messages) => {
@@ -249,6 +289,7 @@
       const message = input.value.trim();
       
       if (message !== "") {
+        console.log("📤 Sending message to room:", room);
         socket.emit("send-message", { room, name, message });
         input.value = "";
       }
@@ -285,15 +326,26 @@
       });
     }
 
-    // Initialize page
+    // Initialize page - INPUT IS ALWAYS ENABLED
     window.onload = function() {
       preventNavigation();
       document.getElementById("user-name").textContent = name;
       document.getElementById("msg").focus();
       
-      // Initially disable chat until join is successful
-      document.getElementById("msg").disabled = true;
-      document.getElementById("send-btn").disabled = true;
+      // CHAT INPUT IS ALWAYS ENABLED - No disabling!
+      enableChatInput();
+      
+      // Fallback: If join-success doesn't fire in 3 seconds, enable chat anyway
+      setTimeout(() => {
+        if (document.getElementById("msg").disabled) {
+          console.log("🕒 Fallback: Enabling chat input after timeout");
+          enableChatInput();
+        }
+      }, 3000);
+
+      // Debug: Check input status
+      console.log("🔍 Input element:", document.getElementById("msg"));
+      console.log("🔍 Input disabled:", document.getElementById("msg").disabled);
     };
 
     // Debug function to check messages
@@ -308,6 +360,9 @@
         console.log(`${index + 1}. Sender: ${sender?.textContent}, Data: ${dataSender}`);
       });
     }
+
+    // Expose debug function to console
+    window.debugMessages = debugMessages;
   </script>
 </body>
 </html>
