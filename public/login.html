@@ -1,17 +1,364 @@
-<!-- login.html -->
-<input type="text" id="name" placeholder="Enter your name" />
-<select id="role">
-  <option value="student">Student</option>
-  <option value="admin">Admin</option>
-</select>
-<button onclick="login()">Enter</button>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - College Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .creator-verify {
+      display: none;
+      margin-top: 15px;
+      padding: 15px;
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 5px;
+    }
+    
+    .creator-verify input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    .creator-verify button {
+      background: #e74c3c;
+    }
+    
+    .creator-verify button:hover {
+      background: #c0392b;
+    }
+  </style>
+</head>
+<body>
+  <div class="college-name">Welcome to GhostRoom</div>
+  <div class="login-container">
+    <h2>Enter Chat</h2>
+    <input type="text" id="name" placeholder="Choose your display name" />
+    <div id="username-status"></div>
+    
+    <div id="creator-verify" class="creator-verify">
+      <h3>Creator Verification</h3>
+      <input type="password" id="creator-token" placeholder="Enter creator access code" />
+      <button onclick="verifyCreator()">Verify Creator</button>
+      <div id="creator-status"></div>
+    </div>
+    
+    <button onclick="enterGlobalRoom()">Enter Global Room</button>
+    <p class="or-divider">or</p>
+    <button onclick="showRoleSelection()">Create/Join Private Room</button>
+    
+    <div id="role-selection" style="display: none; margin-top: 20px;">
+      <select id="role">
+        <option value="student">Student</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button onclick="login()">Proceed</button>
+    </div>
+  </div>
 
-<script>
-  function login() {
-    const name = document.getElementById("name").value;
-    const role = document.getElementById("role").value;
-    sessionStorage.setItem("name", name);
-    sessionStorage.setItem("role", role);
-    window.location.href = "rooms.html";
-  }
-</script>
+  <script>
+    // Check if user is already logged in
+    if (sessionStorage.getItem("name")) {
+      window.location.href = "rooms.html";
+    }
+    
+    const usernameInput = document.getElementById("name");
+    const usernameStatus = document.getElementById("username-status");
+    const creatorVerify = document.getElementById("creator-verify");
+    const creatorToken = document.getElementById("creator-token");
+    const creatorStatus = document.getElementById("creator-status");
+    let usernameCheckTimeout;
+    let isCreatorVerified = false;
+    
+    // Check username availability as user types
+    usernameInput.addEventListener("input", function() {
+      clearTimeout(usernameCheckTimeout);
+      const username = this.value.trim();
+      
+      // Show/hide creator verification
+      if (username.toLowerCase() === "pain") {
+        creatorVerify.style.display = "block";
+      } else {
+        creatorVerify.style.display = "none";
+        isCreatorVerified = false;
+      }
+      
+      if (username.length < 2) {
+        usernameStatus.innerHTML = "";
+        return;
+      }
+      
+      usernameCheckTimeout = setTimeout(async () => {
+        try {
+          const response = await fetch("/check-username", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ username, creatorToken: isCreatorVerified ? "siyakakkar" : null })
+          });
+          
+          const result = await response.json();
+          
+          if (result.available) {
+            usernameStatus.innerHTML = "<span style='color: green'>✓ Username available</span>";
+          } else {
+            if (result.requiresCreatorVerification) {
+              usernameStatus.innerHTML = "<span style='color: orange'>⚠ Creator verification required</span>";
+            } else {
+              usernameStatus.innerHTML = `<span style='color: red'>✗ ${result.reason}</span>`;
+            }
+          }
+        } catch (error) {
+          console.error("Error checking username:", error);
+        }
+      }, 500);
+    });
+    
+    // Verify creator
+    async function verifyCreator() {
+      const token = creatorToken.value.trim();
+      const username = usernameInput.value.trim();
+      
+      if (!token) {
+        creatorStatus.innerHTML = "<span style='color: red'>Please enter verification code</span>";
+        return;
+      }
+      
+      try {
+        const response = await fetch("/creator-verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ username, creatorToken: token })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          isCreatorVerified = true;
+          creatorStatus.innerHTML = "<span style='color: green'>✓ Creator verified</span>";
+          usernameStatus.innerHTML = "<span style='color: green'>✓ Username available</span>";
+        } else {
+          creatorStatus.innerHTML = `<span style='color: red'>✗ ${result.message}</span>`;
+        }
+      } catch (error) {
+        console.error("Error verifying creator:", error);
+        creatorStatus.innerHTML = "<span style='color: red'>Error verifying creator</span>";
+      }
+    }
+    
+    // Allow Enter key in creator token field
+    creatorToken.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        verifyCreator();
+      }
+    });
+    
+    function enterGlobalRoom() {
+      const name = usernameInput.value.trim();
+      
+      if (!name) {
+        alert("Please enter a display name");
+        return;
+      }
+      
+      // Special handling for creator name
+      const token = name.toLowerCase() === "pain" ? creatorToken.value.trim() : null;
+      
+      // Final validation before proceeding
+      fetch("/check-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username: name, creatorToken: token })
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (!result.available) {
+          if (result.requiresCreatorVerification) {
+            alert("Creator verification required. Please enter the creator access code.");
+            creatorVerify.style.display = "block";
+            return;
+          }
+          alert(result.reason);
+          return;
+        }
+        
+        sessionStorage.setItem("name", name);
+        sessionStorage.setItem("role", "student");
+        sessionStorage.setItem("globalRoom", "true");
+        
+        // Store creator token if verified
+        if (token && name.toLowerCase() === "pain") {
+          sessionStorage.setItem("creatorToken", token);
+          sessionStorage.setItem("isCreator", "true");
+        }
+        
+        // Prevent back navigation to login
+        window.history.replaceState(null, null, window.location.href);
+        window.addEventListener('popstate', function() {
+          window.history.pushState(null, null, window.location.href);
+          alert("Please use the Logout button instead of browser navigation.");
+        });
+        
+        window.location.href = "chat.html?room=global-room";
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        alert("Error validating username. Please try again.");
+      });
+    }
+    
+    function showRoleSelection() {
+      const name = usernameInput.value.trim();
+      
+      if (!name) {
+        alert("Please enter a display name");
+        return;
+      }
+      
+      // Special handling for creator name
+      const token = name.toLowerCase() === "pain" ? creatorToken.value.trim() : null;
+      
+      // Validate username before showing role selection
+      fetch("/check-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username: name, creatorToken: token })
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (!result.available) {
+          if (result.requiresCreatorVerification) {
+            alert("Creator verification required. Please enter the creator access code.");
+            creatorVerify.style.display = "block";
+            return;
+          }
+          alert(result.reason);
+          return;
+        }
+        
+        // Store creator token if verified
+        if (token && name.toLowerCase() === "pain") {
+          sessionStorage.setItem("creatorToken", token);
+          sessionStorage.setItem("isCreator", "true");
+        }
+        
+        document.getElementById("role-selection").style.display = "block";
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        alert("Error validating username. Please try again.");
+      });
+    }
+    
+    function login() {
+      const name = usernameInput.value.trim();
+      const role = document.getElementById("role").value;
+      
+      // Special handling for creator name
+      const token = name.toLowerCase() === "pain" ? creatorToken.value.trim() : null;
+      
+      // Final validation
+      fetch("/check-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username: name, creatorToken: token })
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (!result.available) {
+          if (result.requiresCreatorVerification) {
+            alert("Creator verification required. Please enter the creator access code.");
+            creatorVerify.style.display = "block";
+            return;
+          }
+          alert(result.reason);
+          return;
+        }
+        
+        sessionStorage.setItem("name", name);
+        sessionStorage.setItem("role", role);
+        
+        // Store creator token if verified
+        if (token && name.toLowerCase() === "pain") {
+          sessionStorage.setItem("creatorToken", token);
+          sessionStorage.setItem("isCreator", "true");
+        }
+        
+        // Prevent back navigation to login
+        window.history.replaceState(null, null, window.location.href);
+        window.addEventListener('popstate', function() {
+          window.history.pushState(null, null, window.location.href);
+          alert("Please use the Logout button instead of browser navigation.");
+        });
+        
+        window.location.href = "rooms.html";
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        alert("Error validating username. Please try again.");
+      });
+    }
+    
+    // Allow pressing Enter to submit name
+    usernameInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        enterGlobalRoom();
+      }
+    });
+
+    //test
+    document.addEventListener('DOMContentLoaded', function() {
+    // Create style switcher
+    const styleSwitcher = document.createElement('div');
+    styleSwitcher.className = 'style-switcher';
+    styleSwitcher.innerHTML = `
+      <h4>THEME STYLE</h4>
+      <div class="style-options">
+        <button class="style-btn active" data-theme="elegant" title="Elegant">🎩</button>
+        <button class="style-btn" data-theme="midnight" title="Midnight">🌙</button>
+        <button class="style-btn" data-theme="ghostly" title="Ghostly">👻</button>
+      </div>
+    `;
+    document.body.appendChild(styleSwitcher);
+
+    // Set default theme
+    document.body.className = 'theme-elegant';
+    
+    // Theme switching
+    const styleButtons = document.querySelectorAll('.style-btn');
+    styleButtons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        const theme = this.getAttribute('data-theme');
+        
+        // Update body class
+        document.body.className = `theme-${theme}`;
+        
+        // Update active button
+        styleButtons.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Save preference
+        localStorage.setItem('ghostroom-theme', theme);
+      });
+    });
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('ghostroom-theme') || 'elegant';
+    document.body.className = `theme-${savedTheme}`;
+    document.querySelector(`[data-theme="${savedTheme}"]`).classList.add('active');
+  });
+  </script>
+</body>
+</html>

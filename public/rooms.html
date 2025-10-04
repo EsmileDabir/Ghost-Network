@@ -1,33 +1,187 @@
-<!-- rooms.html -->
-<h2>Welcome, <span id="user-name"></span></h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Rooms - College Chat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>Available Chat Rooms</h2>
+      <div class="user-info">Welcome, <span id="user-name"></span>! 
+        <button onclick="logout()">Logout</button>
+      </div>
+    </header>
 
-<div id="admin-options" style="display:none;">
-  <button onclick="createRoom()">Create Room</button>
-</div>
+    <div id="admin-options" style="display:none;" class="admin-panel">
+      <h3>Admin Options</h3>
+      <button onclick="createRoom()" class="admin-btn">Create New Room</button>
+    </div>
 
-<input type="text" id="roomId" placeholder="Enter Room ID" />
-<button onclick="joinRoom()">Join Room</button>
+    <div class="room-list">
+      <h3>Active Rooms</h3>
+      <div id="rooms-container">
+        <p>Loading rooms...</p>
+      </div>
+    </div>
 
-<script>
-  document.getElementById("user-name").textContent = sessionStorage.getItem("name");
-  const role = sessionStorage.getItem("role");
+    <div class="join-section">
+      <input type="text" id="roomId" placeholder="Enter Room ID to join" />
+      <button onclick="joinRoom()">Join Room</button>
+    </div>
+  </div>
 
-  if (role === "admin") {
-    document.getElementById("admin-options").style.display = "block";
-  }
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const userName = sessionStorage.getItem("name");
+    const role = sessionStorage.getItem("role");
+    
+    if (!userName) {
+      window.location.href = "login.html";
+    }
+    
+    document.getElementById("user-name").textContent = userName;
+    
+    if (role === "admin") {
+      document.getElementById("admin-options").style.display = "block";
+    }
+    
+    // Fetch and display rooms
+    fetch('/rooms')
+      .then(response => response.json())
+      .then(rooms => {
+        const container = document.getElementById('rooms-container');
+        
+        if (rooms.length === 0) {
+          container.innerHTML = '<p>No active rooms. Create one as admin!</p>';
+          return;
+        }
+        
+        container.innerHTML = rooms.map(room => `
+          <div class="room-item ${room.isGlobal ? 'global-room' : ''}">
+            <div class="room-info">
+              <div class="room-name">${room.name} ${room.isGlobal ? '(Global)' : ''}</div>
+              ${!room.isGlobal ? `<div class="room-id">ID: ${room.id}</div>` : ''}
+            </div>
+            <div class="room-users">
+              ${room.userCount} user(s)
+              ${room.isGlobal ? `<button onclick="joinGlobalRoom()">Join</button>` : ''}
+            </div>
+          </div>
+        `).join('');
+      });
+    
+    // Listen for room updates
+    socket.on("room-update", (rooms) => {
+      const container = document.getElementById('rooms-container');
+      
+      if (rooms.length === 0) {
+        container.innerHTML = '<p>No active rooms. Create one as admin!</p>';
+        return;
+      }
+      
+      container.innerHTML = rooms.map(room => `
+        <div class="room-item ${room.isGlobal ? 'global-room' : ''}">
+          <div class="room-info">
+            <div class="room-name">${room.name} ${room.isGlobal ? '(Global)' : ''}</div>
+            ${!room.isGlobal ? `<div class="room-id">ID: ${room.id}</div>` : ''}
+          </div>
+          <div class="room-users">
+            ${room.userCount} user(s)
+            ${room.isGlobal ? `<button onclick="joinGlobalRoom()">Join</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+    });
+    
+    function createRoom() {
+      const randomId = Math.floor(100000 + Math.random() * 900000).toString();
+      sessionStorage.setItem("isCreator", "true");
+      sessionStorage.setItem("roomId", randomId);
+      alert("Room created! Your Room ID (only visible to you): " + randomId);
+      window.location.href = `chat.html?room=${randomId}`;
+    }
+    
+    function joinRoom() {
+      const room = document.getElementById("roomId").value.trim();
+      if (!room) {
+        alert("Please enter a room ID");
+        return;
+      }
+      sessionStorage.setItem("isCreator", "false");
+      sessionStorage.setItem("fromChat", "true");
+      window.location.href = `chat.html?room=${room}`;
+    }
+    
+    function joinGlobalRoom() {
+      sessionStorage.setItem("isCreator", "false");
+      sessionStorage.setItem("fromChat", "true");
+      window.location.href = `chat.html?room=global-room`;
+    }
+    
+    function logout() {
+      // Clear all session data
+      sessionStorage.clear();
+      window.location.href = "login.html";
+    }
+    
+    // Prevent navigation if user comes from chat room
+    window.onload = function() {
+      if (sessionStorage.getItem("fromChat")) {
+        sessionStorage.removeItem("fromChat");
+        window.history.pushState(null, document.title, window.location.href);
+        window.addEventListener('popstate', function(event) {
+          window.history.pushState(null, document.title, window.location.href);
+          alert("Please use the Logout button instead of browser navigation.");
+        });
+      }
+    };
 
-  function createRoom() {
-    const randomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
-    sessionStorage.setItem("isCreator", "true");
-    sessionStorage.setItem("roomId", randomId);
-    alert("Room ID: " + randomId); // Only admin sees this
-    window.location.href = `chat.html?room=${randomId}`;
-  }
+    //test
 
-  function joinRoom() {
-    const room = document.getElementById("roomId").value;
-    if (!room) return alert("Enter a room ID");
-    sessionStorage.setItem("isCreator", "false");
-    window.location.href = `chat.html?room=${room}`;
-  }
-</script>
+    document.addEventListener('DOMContentLoaded', function() {
+    // Create style switcher
+    const styleSwitcher = document.createElement('div');
+    styleSwitcher.className = 'style-switcher';
+    styleSwitcher.innerHTML = `
+      <h4>THEME STYLE</h4>
+      <div class="style-options">
+        <button class="style-btn active" data-theme="elegant" title="Elegant">🎩</button>
+        <button class="style-btn" data-theme="midnight" title="Midnight">🌙</button>
+        <button class="style-btn" data-theme="ghostly" title="Ghostly">👻</button>
+      </div>
+    `;
+    document.body.appendChild(styleSwitcher);
+
+    // Set default theme
+    document.body.className = 'theme-elegant';
+    
+    // Theme switching
+    const styleButtons = document.querySelectorAll('.style-btn');
+    styleButtons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        const theme = this.getAttribute('data-theme');
+        
+        // Update body class
+        document.body.className = `theme-${theme}`;
+        
+        // Update active button
+        styleButtons.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Save preference
+        localStorage.setItem('ghostroom-theme', theme);
+      });
+    });
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('ghostroom-theme') || 'elegant';
+    document.body.className = `theme-${savedTheme}`;
+    document.querySelector(`[data-theme="${savedTheme}"]`).classList.add('active');
+  });
+  </script>
+</body>
+</html>

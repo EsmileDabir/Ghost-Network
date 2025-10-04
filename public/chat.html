@@ -3,90 +3,311 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chat Room</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #f9f9f9;
-    }
-
-    #chat-box {
-      height: 400px;
-      border: 1px solid #ccc;
-      padding: 10px;
-      overflow-y: scroll;
-      background-color: #fff;
-    }
-
-    #msg {
-      width: 80%;
-      padding: 8px;
-      margin-top: 10px;
-    }
-
-    #send-btn {
-      padding: 8px 16px;
-    }
-  </style>
+  <title>Chat Room - GhostRoom</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>Welcome to the GhostRoom</h2>
-  <div id="chat-box"></div>
-
-  <input type="text" id="msg" placeholder="Type your message here..." />
-  <button id="send-btn">Send</button>
+  <div id="chat-container">
+    <header>
+      <h2>GhostRoom Chat</h2>
+      <div class="room-info">Room: <span id="room-id-display"></span> | User: <span id="user-name"></span></div>
+      <button id="leave-btn">Leave Room</button>
+    </header>
+    
+    <div id="chat-box">
+      <div class="message system">
+        <div class="text">Welcome to GhostRoom! Your messages are temporary and anonymous.</div>
+        <div class="timestamp">Just now</div>
+      </div>
+    </div>
+    
+    <div class="input-area">
+      <input type="text" id="msg" placeholder="Type your message here..." />
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-
-    // Get query params from URL (e.g., ?room=123456)
     const params = new URLSearchParams(window.location.search);
     const room = params.get("room");
-
-    // Get session data
-    const name = sessionStorage.getItem("name") || "Guest";
+    const name = sessionStorage.getItem("name") || "Anonymous";
+    const role = sessionStorage.getItem("role") || "student";
     const isCreator = sessionStorage.getItem("isCreator") === "true";
+    const isGlobalRoom = room === "global-room";
+    const creatorToken = sessionStorage.getItem("creatorToken") || null;
 
     if (!room) {
       alert("Room ID not found!");
-      window.location.href = "rooms.html"; // Redirect back
+      window.location.href = "rooms.html";
     }
 
-    // Alert room ID to admin only
-    if (isCreator) {
-      alert("Room ID (visible to Admin only): " + room);
+    // Show room ID to admin only (except for global room)
+    if (isCreator && !isGlobalRoom) {
+      document.getElementById("room-id-display").textContent = room;
+    } else {
+      document.getElementById("room-id-display").textContent = isGlobalRoom ? "Global Room" : "******";
     }
 
-    // Join room
-    socket.emit("join-room", { room, name, isCreator });
+    // Message tracking to prevent duplicates
+   
+   const messageTracker = {
+  messages: new Map(),
+  
+  addMessage: function(sender, content, time) {
+    const id = `${sender}-${content}-${time}`;
+    const now = Date.now();
+    
+    // Clean up old messages (older than 10 seconds)
+    for (const [key, timestamp] of this.messages.entries()) {
+      if (now - timestamp > 10000) {
+        this.messages.delete(key);
+      }
+    }
+    
+    if (this.messages.has(id)) {
+      return false;
+    }
+    
+    this.messages.set(id, now);
+    return true;
+  }
+};
 
-    // Receive message from server
-    socket.on("message", ({ name, message }) => {
+// Update the message handler to use the tracker
+
+
+    // Join room with creator token if applicable
+    socket.emit("join-room", { 
+      room, 
+      name, 
+      isCreator, 
+      creatorToken: name.toLowerCase() === "pain" ? creatorToken : null 
+    });
+
+    // Listen for username errors
+    socket.on("username-error", ({ error }) => {
+      alert(`Username error: ${error}`);
+      window.location.href = "login.html";
+    });
+
+    // Listen for blocked events
+    socket.on("blocked", ({ reason }) => {
+      alert(`You have been blocked from this room. Reason: ${reason}`);
+      window.location.href = "rooms.html";
+    });
+
+    // Listen for join success
+    socket.on("join-success", () => {
+      console.log("Successfully joined room");
+      document.getElementById("msg").disabled = false;
+      document.getElementById("send-btn").disabled = false;
+    });
+
+    // Listen for message history
+    socket.on("message-history", (messages) => {
       const chatBox = document.getElementById("chat-box");
-      const msgElement = document.createElement("p");
-      msgElement.innerHTML = `<strong>${name}:</strong> ${message}`;
+      
+      // Clear initial welcome message but keep system messages
+      const systemMessages = chatBox.querySelectorAll('.message.system');
+      chatBox.innerHTML = "";
+      systemMessages.forEach(msg => chatBox.appendChild(msg));
+      
+      // Add historical messages
+      messages.forEach(({ name: senderName, message, timestamp }) => {
+        const msgElement = document.createElement("div");
+        const isSelf = senderName === name;
+        
+        msgElement.className = isSelf ? "message sent" : "message received";
+        
+        // For historical messages, show "You" if it's your own message
+        const displayName = isSelf ? "You" : senderName;
+        
+        if (!isSelf && displayName !== "You") {
+          msgElement.setAttribute('data-sender', senderName);
+        }
+        
+        msgElement.innerHTML = `
+          <div class="sender">${displayName}</div>
+          <div class="text">${message}</div>
+          <div class="timestamp">${new Date(timestamp).toLocaleTimeString()}</div>
+        `;
+        
+        chatBox.appendChild(msgElement);
+      });
+      
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    // Listen for new messages
+    socket.on("message", ({ name: senderName, message, timestamp, isSelf }) => {
+      if (!messageTracker.addMessage(senderName, message, timestamp)) {
+        console.log('Duplicate message prevented');
+        return;
+      }
+      
+      const chatBox = document.getElementById("chat-box");
+      const msgElement = document.createElement("div");
+      
+      // Determine message type
+      if (senderName === "System") {
+        msgElement.className = "message system";
+      } else if (senderName === "You" || isSelf) {
+        msgElement.className = "message sent";
+        senderName = "You"; // Ensure consistent labeling
+      } else {
+        msgElement.className = "message received";
+        // Add data attribute for removal
+        msgElement.setAttribute('data-sender', senderName);
+      }
+      
+      msgElement.innerHTML = `
+        <div class="sender">${senderName}</div>
+        <div class="text">${message}</div>
+        <div class="timestamp">${timestamp}</div>
+      `;
+      
       chatBox.appendChild(msgElement);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
-    // Send message
-    document.getElementById("send-btn").addEventListener("click", () => {
+    // Listen for message removal events
+    socket.on("remove-user-messages", ({ username }) => {
+      console.log(`Removing messages by: ${username}`);
+      const chatBox = document.getElementById("chat-box");
+      let removedCount = 0;
+      
+      // Method 1: Remove by data-sender attribute
+      const messagesWithData = chatBox.querySelectorAll(`.message[data-sender="${username}"]`);
+      messagesWithData.forEach(message => {
+        message.style.opacity = '0';
+        message.style.height = '0';
+        message.style.margin = '0';
+        message.style.padding = '0';
+        message.style.transition = 'all 0.5s ease';
+        message.style.overflow = 'hidden';
+        
+        setTimeout(() => {
+          if (message.parentNode) {
+            message.remove();
+            removedCount++;
+          }
+        }, 500);
+      });
+      
+      // Method 2: Remove by sender text content (fallback)
+      setTimeout(() => {
+        const allMessages = chatBox.querySelectorAll('.message:not(.system)');
+        allMessages.forEach(message => {
+          const senderElement = message.querySelector('.sender');
+          if (senderElement && senderElement.textContent === username) {
+            message.style.opacity = '0';
+            message.style.height = '0';
+            message.style.margin = '0';
+            message.style.padding = '0';
+            message.style.transition = 'all 0.5s ease';
+            message.style.overflow = 'hidden';
+            
+            setTimeout(() => {
+              if (message.parentNode) {
+                message.remove();
+                removedCount++;
+              }
+            }, 500);
+          }
+        });
+        
+        console.log(`Removed ${removedCount} messages by ${username}`);
+      }, 100);
+    });
+
+    // Listen for force disconnect
+    socket.on("force-disconnect", ({ message }) => {
+      alert(`Admin Action: ${message}`);
+      window.location.href = "rooms.html";
+    });
+
+    // Listen for chat clearance (nuclear option)
+    socket.on("clear-chat", () => {
+      const chatBox = document.getElementById("chat-box");
+      // Keep only system messages
+      const systemMessages = chatBox.querySelectorAll('.message.system');
+      chatBox.innerHTML = "";
+      systemMessages.forEach(msg => chatBox.appendChild(msg));
+      console.log('Chat cleared by admin');
+    });
+
+    // Listen for message errors
+    socket.on("message-error", ({ error }) => {
+      alert(`Message error: ${error}`);
+    });
+
+    // Send message function
+    function sendMessage() {
       const input = document.getElementById("msg");
       const message = input.value.trim();
+      
       if (message !== "") {
         socket.emit("send-message", { room, name, message });
         input.value = "";
       }
-    });
+    }
 
-    // Optionally send on Enter key press
+    // Send message on button click
+    document.getElementById("send-btn").addEventListener("click", sendMessage);
+
+    // Send message on Enter key press
     document.getElementById("msg").addEventListener("keypress", (e) => {
       if (e.key === "Enter") {
-        document.getElementById("send-btn").click();
+        sendMessage();
       }
     });
+
+    // Leave room function
+    function leaveRoom() {
+      socket.emit("leave-room", { room, name });
+      sessionStorage.removeItem("isCreator");
+      sessionStorage.setItem("fromChat", "true");
+      window.location.href = "rooms.html";
+    }
+
+    // Add event listener to leave button
+    document.getElementById("leave-btn").addEventListener("click", leaveRoom);
+
+    // Prevent back/forward navigation
+    function preventNavigation() {
+      window.history.replaceState({}, document.title, "chat.html?room=" + room);
+      window.history.pushState(null, document.title, window.location.href);
+      window.addEventListener('popstate', function(event) {
+        window.history.pushState(null, document.title, window.location.href);
+        alert("Please use the Leave Room button to exit the chat.");
+      });
+    }
+
+    // Initialize page
+    window.onload = function() {
+      preventNavigation();
+      document.getElementById("user-name").textContent = name;
+      document.getElementById("msg").focus();
+      
+      // Initially disable chat until join is successful
+      document.getElementById("msg").disabled = true;
+      document.getElementById("send-btn").disabled = true;
+    };
+
+    // Debug function to check messages
+    function debugMessages() {
+      const chatBox = document.getElementById("chat-box");
+      const messages = chatBox.querySelectorAll('.message');
+      
+      console.log('=== MESSAGE DEBUG ===');
+      messages.forEach((msg, index) => {
+        const sender = msg.querySelector('.sender');
+        const dataSender = msg.getAttribute('data-sender');
+        console.log(`${index + 1}. Sender: ${sender?.textContent}, Data: ${dataSender}`);
+      });
+    }
   </script>
 </body>
 </html>

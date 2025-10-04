@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        button { margin: 5px; padding: 8px 15px; }
+        input, select { margin: 5px; padding: 8px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Chat Admin Panel</h1>
+    
+    <div class="section">
+        <h3>Server Stats</h3>
+        <button onclick="loadStats()">Refresh Stats</button>
+        <div id="stats"></div>
+    </div>
+
+    <div class="section">
+        <h3>Block User</h3>
+        <input type="text" id="blockUsername" placeholder="Username">
+        <input type="text" id="blockRoomId" placeholder="Room ID">
+        <input type="text" id="blockReason" placeholder="Reason">
+        <button onclick="blockUser()">Block User</button>
+    </div>
+
+    <div class="section">
+        <h3>Unblock User</h3>
+        <input type="text" id="unblockUsername" placeholder="Username">
+        <input type="text" id="unblockRoomId" placeholder="Room ID">
+        <button onclick="unblockUser()">Unblock User</button>
+    </div>
+
+    <div class="section">
+        <h3>Delete Room</h3>
+        <input type="text" id="deleteRoomId" placeholder="Room ID">
+        <button onclick="deleteRoom()">Delete Room</button>
+    </div>
+
+    <div class="section">
+        <h3>All Rooms</h3>
+        <button onclick="loadRooms()">Load Rooms</button>
+        <div id="roomsList"></div>
+    </div>
+
+    <div class="section">
+        <h3>Blocked Users</h3>
+        <button onclick="loadBlockedUsers()">Load Blocked Users</button>
+        <div id="blockedUsersList"></div>
+    </div>
+
+    <script>
+        const ADMIN_SECRET = prompt("Enter Admin Secret:");
+        
+        async function apiCall(endpoint, data = null) {
+            try {
+                const options = {
+                    method: data ? 'POST' : 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                
+                if (data) {
+                    data.secret = ADMIN_SECRET;
+                    options.body = JSON.stringify(data);
+                } else {
+                    endpoint += `?secret=${ADMIN_SECRET}`;
+                }
+                
+                const response = await fetch(endpoint, options);
+                return await response.json();
+            } catch (error) {
+                return { error: error.message };
+            }
+        }
+
+        async function loadStats() {
+            const result = await apiCall('/admin/api/stats');
+            document.getElementById('stats').innerHTML = result.error ? 
+                `<p class="error">${result.error}</p>` :
+                `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        }
+
+        async function blockUser() {
+            const username = document.getElementById('blockUsername').value;
+            const roomId = document.getElementById('blockRoomId').value;
+            const reason = document.getElementById('blockReason').value;
+            
+            const result = await apiCall('/admin/api/block-user', { username, roomId, reason });
+            alert(result.error || result.message);
+        }
+
+        async function unblockUser() {
+            const username = document.getElementById('unblockUsername').value;
+            const roomId = document.getElementById('unblockRoomId').value;
+            
+            const result = await apiCall('/admin/api/unblock-user', { username, roomId });
+            alert(result.error || result.message);
+        }
+
+        async function deleteRoom() {
+            const roomId = document.getElementById('deleteRoomId').value;
+            
+            const result = await apiCall('/admin/api/delete-room', { roomId });
+            alert(result.error || result.message);
+        }
+
+        async function loadRooms() {
+            const result = await apiCall('/admin/api/rooms');
+            document.getElementById('roomsList').innerHTML = result.error ? 
+                `<p class="error">${result.error}</p>` :
+                `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        }
+
+        async function loadBlockedUsers() {
+            const result = await apiCall('/admin/api/blocked-users');
+            document.getElementById('blockedUsersList').innerHTML = result.error ? 
+                `<p class="error">${result.error}</p>` :
+                `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        }
+    </script>
+</body>
+</html>
