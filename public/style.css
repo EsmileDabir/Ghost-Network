@@ -1,3 +1,12 @@
+/*
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+*/
+
 :root {
   /* Default theme (Modern Blue) */
   --primary-color: #007bff;
@@ -376,7 +385,7 @@ button:hover {
   padding: 25px;
   overflow-y: auto;
   background: var(--bg-secondary);
-  background-image: none;
+  background-image: none; /* Remove background pattern for subtlety */
 }
 
 .message {
@@ -430,15 +439,11 @@ button:hover {
   color: var(--text-secondary);
 }
 
-/* MOBILE-FRIENDLY INPUT AREA FIX */
 .input-area {
   display: flex;
   padding: 15px;
   background: var(--bg-primary);
   border-top: 1px solid var(--border-color);
-  align-items: center;
-  gap: 10px;
-  position: relative;
 }
 
 #msg {
@@ -451,7 +456,6 @@ button:hover {
   outline: none;
   color: var(--text-primary);
   transition: all 0.3s ease;
-  min-height: 44px; /* Better touch target */
 }
 
 #msg:focus {
@@ -504,26 +508,11 @@ button:hover {
   background-color: var(--secondary-color);
 }
 
-/* Enhanced Mobile Responsive Design */
+/* Responsive design */
 @media (max-width: 768px) {
-  body {
-    padding: 10px;
-    align-items: flex-start;
-    min-height: 100vh;
-  }
-  
   .container {
     border-radius: 10px;
     padding: 15px;
-    margin: 10px auto;
-    width: 100%;
-  }
-  
-  .login-container {
-    width: 100%;
-    max-width: 400px;
-    padding: 2rem;
-    margin: 20px auto;
   }
   
   header {
@@ -533,157 +522,22 @@ button:hover {
     text-align: center;
   }
   
-  #chat-container {
-    border-radius: 10px;
-    margin: 10px auto;
-    height: 100vh;
-    max-height: calc(100vh - 20px);
-    display: flex;
-    flex-direction: column;
-  }
-  
-  #chat-container header {
-    padding: 15px 20px;
-    flex-shrink: 0;
-  }
-  
   #chat-box {
     padding: 15px;
-    height: calc(100vh - 140px);
-    flex-grow: 1;
+    height: 350px;
   }
   
   .message {
     max-width: 90%;
-    padding: 10px 15px;
-  }
-  
-  /* MOBILE INPUT AREA FIX */
-  .input-area {
-    padding: 12px 15px;
-    gap: 8px;
-    flex-shrink: 0;
-    position: sticky;
-    bottom: 0;
-    background: var(--bg-primary);
-  }
-  
-  #msg {
-    padding: 12px 16px;
-    font-size: 16px; /* Prevents zoom on iOS */
-    min-height: 48px;
-    border-radius: 24px;
-  }
-  
-  #send-btn {
-    padding: 12px 18px;
-    min-height: 48px;
-    min-width: 60px;
-    border-radius: 24px;
-    font-size: 14px;
-    margin-left: 0; /* Remove margin since we're using gap */
   }
   
   .join-section {
     flex-direction: column;
-    gap: 10px;
   }
   
   .style-switcher {
     top: 10px;
     right: 10px;
-    padding: 10px;
-    transform: scale(0.9);
-  }
-  
-  .style-switcher h4 {
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  
-  .style-btn {
-    width: 35px;
-    height: 35px;
-    font-size: 16px;
-  }
-  
-  .college-name {
-    font-size: 24px;
-    top: 15px;
-    position: relative;
-    margin-bottom: 20px;
-  }
-}
-
-/* Extra small devices */
-@media (max-width: 480px) {
-  body {
-    padding: 5px;
-  }
-  
-  .container, #chat-container {
-    border-radius: 8px;
-  }
-  
-  #chat-box {
-    padding: 10px;
-    height: calc(100vh - 130px);
-  }
-  
-  .input-area {
-    padding: 10px 12px;
-  }
-  
-  #msg {
-    padding: 10px 14px;
-    min-height: 44px;
-  }
-  
-  #send-btn {
-    padding: 10px 16px;
-    min-height: 44px;
-    min-width: 55px;
-    font-size: 13px;
-  }
-  
-  .message {
-    max-width: 95%;
-    padding: 8px 12px;
-    font-size: 14px;
-  }
-  
-  .login-container {
-    padding: 1.5rem;
-  }
-  
-  .login-container h2 {
-    font-size: 24px;
-    margin-bottom: 1.5rem;
-  }
-}
-
-/* Fix for very tall screens */
-@media (min-height: 1000px) {
-  #chat-box {
-    height: 700px;
-  }
-}
-
-/* Landscape mode fixes */
-@media (max-width: 768px) and (orientation: landscape) {
-  #chat-container {
-    height: 100vh;
-  }
-  
-  #chat-box {
-    height: calc(100vh - 120px);
-  }
-  
-  .input-area {
-    padding: 8px 12px;
-  }
-  
-  #msg, #send-btn {
-    min-height: 40px;
+    padding: 12px;
   }
 }
