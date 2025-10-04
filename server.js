@@ -1236,10 +1236,36 @@ Server Statistics:
 }
 
 // Route for root path
+// app.get("/", (req, res) => {
+//   res.sendFile(path.join(__dirname, "public", "login.html"));
+// });
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+
+app.get("/chat", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
+
+app.get("/rooms", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "rooms.html"));
+});
+
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
+
+// Static files should handle CSS/JS
+app.use(express.static("public"));
+
+// Test route
+app.get("/test", (req, res) => {
+  res.json({ message: "Server working!" });
+});
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ 
