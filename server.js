@@ -25,7 +25,18 @@ const verifiedCreators = new Set();
 // Security middleware
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000, // limit each IP to 100 requests per windowMs
+  message: {
+    error: "Too many requests from this IP, please try again after 15 minutes"
+  },
+   standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Don't rate limit admin routes, health checks, or static files
+    return req.path.startsWith('/admin') || 
+           req.path === '/health' || 
+           req.path.startsWith('/public/');
+  }
 });
 app.use(limiter);
 
