@@ -842,75 +842,71 @@ io.on("connection", (socket) => {
   const messageTimestamps = [];
 
   socket.on("send-message", async (data) => {
-    const now = Date.now();
-    messageTimestamps.push(now);
+  const now = Date.now();
+  messageTimestamps.push(now);
+  
+  while (messageTimestamps.length > 0 && now - messageTimestamps[0] > 1000) {
+    messageTimestamps.shift();
+  }
+  
+  if (messageTimestamps.length > ADMIN_CONTROLS.MESSAGE_RATE_LIMIT) {
+    socket.emit("message-error", { error: "Message rate limit exceeded" });
+    return;
+  }
+  
+  try {
+    const { room, name, message } = data;
     
-    while (messageTimestamps.length > 0 && now - messageTimestamps[0] > 1000) {
-      messageTimestamps.shift();
-    }
-    
-    if (messageTimestamps.length > ADMIN_CONTROLS.MESSAGE_RATE_LIMIT) {
-      socket.emit("message-error", { error: "Message rate limit exceeded" });
+    const isBlocked = await BlockedUser.findOne({ username: name, roomId: room });
+    if (isBlocked) {
+      socket.emit("blocked", { reason: isBlocked.reason });
       return;
     }
     
-    try {
-      const { room, name, message } = data;
-      
-      const isBlocked = await BlockedUser.findOne({ username: name, roomId: room });
-      if (isBlocked) {
-        socket.emit("blocked", { reason: isBlocked.reason });
-        return;
-      }
-      
-      const isGlobal = room === GLOBAL_ROOM_ID;
-      const expiresAt = getExpirationTime(isGlobal);
-      
-      const newMessage = new Message({
-        roomId: room,
-        name,
-        message,
-        timestamp: new Date(),
-        expiresAt
-      });
-      
-      await newMessage.save();
-      
-      socket.to(room).emit("message", { 
-        name: name,
-        message: message,
-        timestamp: new Date().toLocaleTimeString(),
-        isSelf: false
-      });
-      
-      socket.emit("message", {
-        name: "You",
-        message: message,
-        timestamp: new Date().toLocaleTimeString(),
-        isSelf: true
-      });
-      
-    } catch (error) {
-      console.error("Error saving message:", error);
-    }
-  });
-
-  socket.on("join-room", async (data) => {
-    if (data.creatorToken) {
-      creatorTokens[socket.id] = data.creatorToken;
-    }
-    await joinRoom(socket, {
-      ...data,
-      creatorToken: creatorTokens[socket.id]
+    const isGlobal = room === GLOBAL_ROOM_ID;
+    const expiresAt = getExpirationTime(isGlobal);
+    
+    const newMessage = new Message({
+      roomId: room,
+      name,
+      message,
+      timestamp: new Date(),
+      expiresAt
     });
-  });
+    
+    await newMessage.save();
+    
+    // ✅ FIX: Use io.to() instead of socket.to() to broadcast to ALL users in the room
+    io.to(room).emit("message", { 
+      name: name,
+      message: message,
+      timestamp: new Date().toLocaleTimeString(),
+      isSelf: false // Client will handle showing "You" for their own messages
+    });
+    
+    console.log(`📢 Message broadcast to room ${room}: ${name}: ${message}`);
+    
+  } catch (error) {
+    console.error("Error saving message:", error);
+  }
+});
 
-  socket.on("leave-room", async (data) => await leaveRoom(socket, data));
-  
-  socket.on("disconnect", async (reason) => {
-    delete creatorTokens[socket.id];
-    await handleDisconnect(socket, reason);
+socket.on("join-room", async (data) => {
+  if (data.creatorToken) {
+    creatorTokens[socket.id] = data.creatorToken;
+  }
+  await joinRoom(socket, {
+    ...data,
+    creatorToken: creatorTokens[socket.id]
   });
+});
+
+socket.on("leave-room", async (data) => await leaveRoom(socket, data));
+
+socket.on("disconnect", async (reason) => {
+  delete creatorTokens[socket.id];
+  await handleDisconnect(socket, reason);
+});
 });
 
 // Schedule cleanup jobs

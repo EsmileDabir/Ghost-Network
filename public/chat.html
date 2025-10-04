@@ -182,35 +182,35 @@
 
     // Listen for new messages
     socket.on("message", ({ name: senderName, message, timestamp, isSelf }) => {
-      if (!messageTracker.addMessage(senderName, message, timestamp)) {
-        console.log('Duplicate message prevented');
-        return;
-      }
-      
-      const chatBox = document.getElementById("chat-box");
-      const msgElement = document.createElement("div");
-      
-      // Determine message type
-      if (senderName === "System") {
-        msgElement.className = "message system";
-      } else if (senderName === "You" || isSelf) {
-        msgElement.className = "message sent";
-        senderName = "You"; // Ensure consistent labeling
-      } else {
-        msgElement.className = "message received";
-        // Add data attribute for removal
-        msgElement.setAttribute('data-sender', senderName);
-      }
-      
-      msgElement.innerHTML = `
-        <div class="sender">${senderName}</div>
-        <div class="text">${message}</div>
-        <div class="timestamp">${timestamp}</div>
-      `;
-      
-      chatBox.appendChild(msgElement);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    });
+  const isMyMessage = senderName === name; // Determine if this is current user's message
+  
+  if (!messageTracker.addMessage(senderName, message, timestamp)) {
+    console.log('Duplicate message prevented');
+    return;
+  }
+  
+  const chatBox = document.getElementById("chat-box");
+  const msgElement = document.createElement("div");
+  
+  if (senderName === "System") {
+    msgElement.className = "message system";
+  } else if (isMyMessage) {
+    msgElement.className = "message sent";
+    senderName = "You"; // Show "You" for own messages
+  } else {
+    msgElement.className = "message received";
+    msgElement.setAttribute('data-sender', senderName);
+  }
+  
+  msgElement.innerHTML = `
+    <div class="sender">${senderName}</div>
+    <div class="text">${message}</div>
+    <div class="timestamp">${timestamp}</div>
+  `;
+  
+  chatBox.appendChild(msgElement);
+  chatBox.scrollTop = chatBox.scrollHeight;
+});
 
     // Listen for message removal events
     socket.on("remove-user-messages", ({ username }) => {
