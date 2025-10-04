@@ -1,62 +1,121 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Panel</title>
+    <title>Admin Panel - Secure</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
-        button { margin: 5px; padding: 8px 15px; }
-        input, select { margin: 5px; padding: 8px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .login-container { max-width: 400px; margin: 100px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .admin-panel { display: none; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; background: white; }
+        button { margin: 5px; padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        input, select { margin: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
         .success { color: green; }
         .error { color: red; }
+        .logout { float: right; background: #6c757d; }
+        .logout:hover { background: #545b62; }
     </style>
 </head>
 <body>
-    <h1>Chat Admin Panel</h1>
-    
-    <div class="section">
-        <h3>Server Stats</h3>
-        <button onclick="loadStats()">Refresh Stats</button>
-        <div id="stats"></div>
+    <div id="loginContainer" class="login-container">
+        <h2>Admin Login</h2>
+        <input type="password" id="adminSecret" placeholder="Enter Admin Secret" style="width: 100%; padding: 10px; margin: 10px 0;">
+        <button onclick="login()" style="width: 100%; padding: 10px;">Login</button>
+        <div id="loginError" class="error"></div>
     </div>
 
-    <div class="section">
-        <h3>Block User</h3>
-        <input type="text" id="blockUsername" placeholder="Username">
-        <input type="text" id="blockRoomId" placeholder="Room ID">
-        <input type="text" id="blockReason" placeholder="Reason">
-        <button onclick="blockUser()">Block User</button>
-    </div>
+    <div id="adminPanel" class="admin-panel">
+        <button class="logout" onclick="logout()">Logout</button>
+        <h1>Chat Admin Panel</h1>
+        
+        <div class="section">
+            <h3>Server Stats</h3>
+            <button onclick="loadStats()">Refresh Stats</button>
+            <div id="stats"></div>
+        </div>
 
-    <div class="section">
-        <h3>Unblock User</h3>
-        <input type="text" id="unblockUsername" placeholder="Username">
-        <input type="text" id="unblockRoomId" placeholder="Room ID">
-        <button onclick="unblockUser()">Unblock User</button>
-    </div>
+        <div class="section">
+            <h3>Block User</h3>
+            <input type="text" id="blockUsername" placeholder="Username" required>
+            <input type="text" id="blockRoomId" placeholder="Room ID" required>
+            <input type="text" id="blockReason" placeholder="Reason">
+            <button onclick="blockUser()">Block User</button>
+        </div>
 
-    <div class="section">
-        <h3>Delete Room</h3>
-        <input type="text" id="deleteRoomId" placeholder="Room ID">
-        <button onclick="deleteRoom()">Delete Room</button>
-    </div>
+        <div class="section">
+            <h3>Unblock User</h3>
+            <input type="text" id="unblockUsername" placeholder="Username" required>
+            <input type="text" id="unblockRoomId" placeholder="Room ID" required>
+            <button onclick="unblockUser()">Unblock User</button>
+        </div>
 
-    <div class="section">
-        <h3>All Rooms</h3>
-        <button onclick="loadRooms()">Load Rooms</button>
-        <div id="roomsList"></div>
-    </div>
+        <div class="section">
+            <h3>Delete Room</h3>
+            <input type="text" id="deleteRoomId" placeholder="Room ID" required>
+            <button class="danger" onclick="deleteRoom()">Delete Room</button>
+        </div>
 
-    <div class="section">
-        <h3>Blocked Users</h3>
-        <button onclick="loadBlockedUsers()">Load Blocked Users</button>
-        <div id="blockedUsersList"></div>
+        <div class="section">
+            <h3>All Rooms</h3>
+            <button onclick="loadRooms()">Load Rooms</button>
+            <div id="roomsList"></div>
+        </div>
+
+        <div class="section">
+            <h3>Blocked Users</h3>
+            <button onclick="loadBlockedUsers()">Load Blocked Users</button>
+            <div id="blockedUsersList"></div>
+        </div>
     </div>
 
     <script>
-        const ADMIN_SECRET = prompt("Enter Admin Secret:");
-        
+        let currentSecret = null;
+
+        function login() {
+            const secret = document.getElementById('adminSecret').value;
+            if (!secret) {
+                document.getElementById('loginError').textContent = 'Please enter admin secret';
+                return;
+            }
+
+            // Test the secret with a simple API call
+            testAdminSecret(secret);
+        }
+
+        async function testAdminSecret(secret) {
+            try {
+                const response = await fetch(`/admin/api/stats?secret=${secret}`);
+                const result = await response.json();
+                
+                if (result.error) {
+                    document.getElementById('loginError').textContent = 'Invalid admin secret';
+                } else {
+                    currentSecret = secret;
+                    document.getElementById('loginContainer').style.display = 'none';
+                    document.getElementById('adminPanel').style.display = 'block';
+                    document.getElementById('adminSecret').value = ''; // Clear the input
+                    document.getElementById('loginError').textContent = '';
+                    loadStats(); // Load initial stats
+                }
+            } catch (error) {
+                document.getElementById('loginError').textContent = 'Login failed: ' + error.message;
+            }
+        }
+
+        function logout() {
+            currentSecret = null;
+            document.getElementById('loginContainer').style.display = 'block';
+            document.getElementById('adminPanel').style.display = 'none';
+        }
+
         async function apiCall(endpoint, data = null) {
+            if (!currentSecret) {
+                alert('Please login first');
+                return { error: 'Not authenticated' };
+            }
+
             try {
                 const options = {
                     method: data ? 'POST' : 'GET',
@@ -64,10 +123,10 @@
                 };
                 
                 if (data) {
-                    data.secret = ADMIN_SECRET;
+                    data.secret = currentSecret;
                     options.body = JSON.stringify(data);
                 } else {
-                    endpoint += `?secret=${ADMIN_SECRET}`;
+                    endpoint += `?secret=${currentSecret}`;
                 }
                 
                 const response = await fetch(endpoint, options);
@@ -89,23 +148,63 @@
             const roomId = document.getElementById('blockRoomId').value;
             const reason = document.getElementById('blockReason').value;
             
+            if (!username || !roomId) {
+                alert('Please fill all required fields');
+                return;
+            }
+            
             const result = await apiCall('/admin/api/block-user', { username, roomId, reason });
             alert(result.error || result.message);
+            
+            if (!result.error) {
+                // Clear form
+                document.getElementById('blockUsername').value = '';
+                document.getElementById('blockRoomId').value = '';
+                document.getElementById('blockReason').value = '';
+                loadStats(); // Refresh stats
+            }
         }
 
         async function unblockUser() {
             const username = document.getElementById('unblockUsername').value;
             const roomId = document.getElementById('unblockRoomId').value;
             
+            if (!username || !roomId) {
+                alert('Please fill all required fields');
+                return;
+            }
+            
             const result = await apiCall('/admin/api/unblock-user', { username, roomId });
             alert(result.error || result.message);
+            
+            if (!result.error) {
+                // Clear form
+                document.getElementById('unblockUsername').value = '';
+                document.getElementById('unblockRoomId').value = '';
+                loadStats(); // Refresh stats
+            }
         }
 
         async function deleteRoom() {
             const roomId = document.getElementById('deleteRoomId').value;
             
+            if (!roomId) {
+                alert('Please enter room ID');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete room ${roomId}? This cannot be undone!`)) {
+                return;
+            }
+            
             const result = await apiCall('/admin/api/delete-room', { roomId });
             alert(result.error || result.message);
+            
+            if (!result.error) {
+                document.getElementById('deleteRoomId').value = '';
+                loadStats(); // Refresh stats
+                loadRooms(); // Refresh rooms list
+            }
         }
 
         async function loadRooms() {
@@ -121,6 +220,14 @@
                 `<p class="error">${result.error}</p>` :
                 `<pre>${JSON.stringify(result, null, 2)}</pre>`;
         }
+
+        // Auto-logout after 30 minutes
+        setTimeout(() => {
+            if (currentSecret) {
+                alert('Session expired. Please login again.');
+                logout();
+            }
+        }, 30 * 60 * 1000);
     </script>
 </body>
 </html>

@@ -1,4 +1,8 @@
 require('dotenv').config();
+console.log("Environment check:");
+console.log("MONGODB_URI:", process.env.MONGODB_URI ? "Set" : "Not set");
+console.log("PORT:", process.env.PORT);
+console.log("NODE_ENV:", process.env.NODE_ENV);
 const express = require("express");
 const app = express();
 const http = require("http").createServer(app);
@@ -44,12 +48,7 @@ app.use(express.json());
 const mongoose = require("mongoose");
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/college_chat";
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-})
+mongoose.connect(MONGODB_URI)
 .then(() => console.log('✅ Connected to MongoDB Atlas'))
 .catch((error) => {
   console.error('❌ MongoDB connection error:', error);
