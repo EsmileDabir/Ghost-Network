@@ -38,6 +38,7 @@
     const socket = io();
     const userName = sessionStorage.getItem("name");
     const role = sessionStorage.getItem("role");
+    const isCreator = sessionStorage.getItem("isCreator") === "true";
     
     if (!userName) {
       window.location.href = "login.html";
@@ -45,34 +46,43 @@
     
     document.getElementById("user-name").textContent = userName;
     
-    if (role === "admin") {
+    if (role === "admin" || isCreator) {
       document.getElementById("admin-options").style.display = "block";
     }
     
     // Fetch and display rooms
-    fetch('/rooms')
-      .then(response => response.json())
-      .then(rooms => {
-        const container = document.getElementById('rooms-container');
-        
-        if (rooms.length === 0) {
-          container.innerHTML = '<p>No active rooms. Create one as admin!</p>';
-          return;
-        }
-        
-        container.innerHTML = rooms.map(room => `
-          <div class="room-item ${room.isGlobal ? 'global-room' : ''}">
-            <div class="room-info">
-              <div class="room-name">${room.name} ${room.isGlobal ? '(Global)' : ''}</div>
-              ${!room.isGlobal ? `<div class="room-id">ID: ${room.id}</div>` : ''}
+    function loadRooms() {
+      fetch('/rooms-api?username=' + encodeURIComponent(userName))
+        .then(response => response.json())
+        .then(rooms => {
+          const container = document.getElementById('rooms-container');
+          
+          if (rooms.length === 0) {
+            container.innerHTML = '<p>No active rooms. Create one as admin!</p>';
+            return;
+          }
+          
+          container.innerHTML = rooms.map(room => `
+            <div class="room-item ${room.isGlobal ? 'global-room' : ''}">
+              <div class="room-info">
+                <div class="room-name">${room.name} ${room.isGlobal ? '(Global)' : ''}</div>
+                ${!room.isGlobal ? `<div class="room-id">ID: ${room.id}</div>` : ''}
+              </div>
+              <div class="room-users">
+                ${room.userCount} user(s)
+                ${room.isGlobal ? 
+                  `<button onclick="joinGlobalRoom()">Join</button>` : 
+                  `<button onclick="joinSpecificRoom('${room.id}')">Join</button>`
+                }
+              </div>
             </div>
-            <div class="room-users">
-              ${room.userCount} user(s)
-              ${room.isGlobal ? `<button onclick="joinGlobalRoom()">Join</button>` : ''}
-            </div>
-          </div>
-        `).join('');
-      });
+          `).join('');
+        })
+        .catch(error => {
+          console.error('Error loading rooms:', error);
+          document.getElementById('rooms-container').innerHTML = '<p>Error loading rooms</p>';
+        });
+    }
     
     // Listen for room updates
     socket.on("room-update", (rooms) => {
@@ -91,7 +101,10 @@
           </div>
           <div class="room-users">
             ${room.userCount} user(s)
-            ${room.isGlobal ? `<button onclick="joinGlobalRoom()">Join</button>` : ''}
+            ${room.isGlobal ? 
+              `<button onclick="joinGlobalRoom()">Join</button>` : 
+              `<button onclick="joinSpecificRoom('${room.id}')">Join</button>`
+            }
           </div>
         </div>
       `).join('');
@@ -116,6 +129,12 @@
       window.location.href = `chat.html?room=${room}`;
     }
     
+    function joinSpecificRoom(roomId) {
+      sessionStorage.setItem("isCreator", "false");
+      sessionStorage.setItem("fromChat", "true");
+      window.location.href = `chat.html?room=${roomId}`;
+    }
+    
     function joinGlobalRoom() {
       sessionStorage.setItem("isCreator", "false");
       sessionStorage.setItem("fromChat", "true");
@@ -123,13 +142,14 @@
     }
     
     function logout() {
-      // Clear all session data
       sessionStorage.clear();
       window.location.href = "login.html";
     }
     
-    // Prevent navigation if user comes from chat room
+    // Load rooms on page load
     window.onload = function() {
+      loadRooms();
+      
       if (sessionStorage.getItem("fromChat")) {
         sessionStorage.removeItem("fromChat");
         window.history.pushState(null, document.title, window.location.href);
@@ -140,48 +160,37 @@
       }
     };
 
-    //test
-
+    // Theme switcher code (same as before)
     document.addEventListener('DOMContentLoaded', function() {
-    // Create style switcher
-    const styleSwitcher = document.createElement('div');
-    styleSwitcher.className = 'style-switcher';
-    styleSwitcher.innerHTML = `
-      <h4>THEME STYLE</h4>
-      <div class="style-options">
-        <button class="style-btn active" data-theme="elegant" title="Elegant">🎩</button>
-        <button class="style-btn" data-theme="midnight" title="Midnight">🌙</button>
-        <button class="style-btn" data-theme="ghostly" title="Ghostly">👻</button>
-      </div>
-    `;
-    document.body.appendChild(styleSwitcher);
+      const styleSwitcher = document.createElement('div');
+      styleSwitcher.className = 'style-switcher';
+      styleSwitcher.innerHTML = `
+        <h4>THEME STYLE</h4>
+        <div class="style-options">
+          <button class="style-btn active" data-theme="elegant" title="Elegant">🎩</button>
+          <button class="style-btn" data-theme="midnight" title="Midnight">🌙</button>
+          <button class="style-btn" data-theme="ghostly" title="Ghostly">👻</button>
+        </div>
+      `;
+      document.body.appendChild(styleSwitcher);
 
-    // Set default theme
-    document.body.className = 'theme-elegant';
-    
-    // Theme switching
-    const styleButtons = document.querySelectorAll('.style-btn');
-    styleButtons.forEach(btn => {
-      btn.addEventListener('click', function() {
-        const theme = this.getAttribute('data-theme');
-        
-        // Update body class
-        document.body.className = `theme-${theme}`;
-        
-        // Update active button
-        styleButtons.forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        
-        // Save preference
-        localStorage.setItem('ghostroom-theme', theme);
+      document.body.className = 'theme-elegant';
+      
+      const styleButtons = document.querySelectorAll('.style-btn');
+      styleButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+          const theme = this.getAttribute('data-theme');
+          document.body.className = `theme-${theme}`;
+          styleButtons.forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          localStorage.setItem('ghostroom-theme', theme);
+        });
       });
+      
+      const savedTheme = localStorage.getItem('ghostroom-theme') || 'elegant';
+      document.body.className = `theme-${savedTheme}`;
+      document.querySelector(`[data-theme="${savedTheme}"]`).classList.add('active');
     });
-    
-    // Load saved theme
-    const savedTheme = localStorage.getItem('ghostroom-theme') || 'elegant';
-    document.body.className = `theme-${savedTheme}`;
-    document.querySelector(`[data-theme="${savedTheme}"]`).classList.add('active');
-  });
   </script>
 </body>
 </html>
