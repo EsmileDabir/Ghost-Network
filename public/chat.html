@@ -104,38 +104,38 @@
     });
 
     // Listen for join pending (private rooms)
-    socket.on("join-pending", ({ message }) => {
-      console.log("⏳ Join pending:", message);
-      document.getElementById("chat-box").innerHTML += `
-        <div class="message system">
-          <div class="text">${message}</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-      `;
-    });
+    // socket.on("join-pending", ({ message }) => {
+    //   console.log("⏳ Join pending:", message);
+    //   document.getElementById("chat-box").innerHTML += `
+    //     <div class="message system">
+    //       <div class="text">${message}</div>
+    //       <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+    //     </div>
+    //   `;
+    // });
 
     // Listen for join approved
-    socket.on("join-approved", ({ room, name }) => {
-      console.log("✅ Join approved for room:", room);
-      enableChatInput();
-      document.getElementById("chat-box").innerHTML += `
-        <div class="message system">
-          <div class="text">Your join request was approved! You can now chat.</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-      `;
-    });
+    // socket.on("join-approved", ({ room, name }) => {
+    //   console.log("✅ Join approved for room:", room);
+    //   enableChatInput();
+    //   document.getElementById("chat-box").innerHTML += `
+    //     <div class="message system">
+    //       <div class="text">Your join request was approved! You can now chat.</div>
+    //       <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+    //     </div>
+    //   `;
+    // });
 
-    // Listen for join rejected
-    socket.on("join-rejected", ({ room, reason }) => {
-      console.log("❌ Join rejected:", reason);
-      document.getElementById("chat-box").innerHTML += `
-        <div class="message system">
-          <div class="text">Join request rejected: ${reason}</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-      `;
-    });
+    // // Listen for join rejected
+    // socket.on("join-rejected", ({ room, reason }) => {
+    //   console.log("❌ Join rejected:", reason);
+    //   document.getElementById("chat-box").innerHTML += `
+    //     <div class="message system">
+    //       <div class="text">Join request rejected: ${reason}</div>
+    //       <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+    //     </div>
+    //   `;
+    // });
 
     // Enable chat input function
     function enableChatInput() {

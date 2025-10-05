@@ -10,19 +10,18 @@ const io = require("socket.io")(http, {
 });
 const path = require("path");
 const cron = require("node-cron");
-const readline = require("readline");
 const verifiedCreators = new Set();
 
 // Serve static files from "public"
 app.use(express.static("public"));
 app.use(express.json());
 
-// Connect to MongoDB
+// Connect to MongoDB Atlas
 const mongoose = require("mongoose");
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/college_chat";
 
 mongoose.connect(MONGODB_URI)
-.then(() => console.log('✅ Connected to MongoDB'))
+.then(() => console.log('✅ Connected to MongoDB Atlas'))
 .catch((error) => {
   console.error('❌ MongoDB connection error:', error);
   process.exit(1);
@@ -37,6 +36,7 @@ const messageSchema = new mongoose.Schema({
   expiresAt: { type: Date, index: { expireAfterSeconds: 0 } }
 });
 
+messageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 const Message = mongoose.model("Message", messageSchema);
 
 // Define Room Schema
@@ -83,7 +83,7 @@ const userActivitySchema = new mongoose.Schema({
 
 const UserActivity = mongoose.model('UserActivity', userActivitySchema);
 
-// Store active rooms in memory
+// Store active rooms in memory for real-time updates
 const activeRooms = new Map();
 const pendingJoinRequests = new Map();
 const GLOBAL_ROOM_ID = "global-room";
@@ -100,7 +100,7 @@ const ADMIN_CONTROLS = {
 // Username restrictions
 const RESERVED_USERNAMES = ["pain", "admin", "system", "root"];
 
-// Check username availability
+// Check username availability with creator verification
 async function isUsernameAvailable(username, creatorToken = null, socketId = null) {
   try {
     if (socketId && verifiedCreators.has(socketId) && username.toLowerCase() === "pain") {
@@ -142,7 +142,7 @@ async function isUsernameAvailable(username, creatorToken = null, socketId = nul
   }
 }
 
-// Get filtered room list
+// Get filtered room list based on user
 async function getFilteredRoomList(username = null) {
   try {
     const rooms = await Room.find({});
@@ -204,7 +204,7 @@ async function initializeGlobalRoom() {
   }
 }
 
-// Get expiration time
+// Function to calculate expiration time based on room type
 function getExpirationTime(isGlobal = false) {
   const now = new Date();
   if (isGlobal) {
@@ -214,7 +214,7 @@ function getExpirationTime(isGlobal = false) {
   }
 }
 
-// Clean up empty rooms
+// Clean up empty private rooms
 async function cleanupEmptyRooms() {
   try {
     if (!ADMIN_CONTROLS.AUTO_CLEANUP) return;
@@ -254,7 +254,8 @@ async function updateRoomList(username = null) {
   }
 }
 
-// Join room handler
+// Join room handler with approval system
+// Join room handler - SIMPLIFIED (no approval required)
 async function joinRoom(socket, { room, name, isCreator, creatorToken, isHidden = false }) {
   try {
     const usernameValidation = await isUsernameAvailable(name, creatorToken, socket.id);
@@ -272,141 +273,44 @@ async function joinRoom(socket, { room, name, isCreator, creatorToken, isHidden 
 
     let roomData = await Room.findOne({ roomId: room });
 
+    // Create room if it doesn't exist (except for global room)
     if (!roomData && room !== GLOBAL_ROOM_ID) {
+      console.log(`🆕 Creating new private room: ${room} by ${name}`);
       roomData = new Room({
         roomId: room,
         name: `Room ${room}`,
-        createdBy: isCreator ? name : 'Unknown',
+        createdBy: name,
         isGlobal: false,
         isPrivate: true,
         isHidden: isHidden,
-        users: [],
+        users: [{
+          socketId: socket.id,
+          name: name,
+          joinedAt: new Date()
+        }],
         pendingJoins: []
       });
       await roomData.save();
     }
 
     if (roomData) {
-      if (roomData.isGlobal) {
+      // Add user to room in database (for both global and private rooms)
+      const existingUserIndex = roomData.users.findIndex(user => user.name === name);
+      if (existingUserIndex === -1) {
         roomData.users.push({
           socketId: socket.id,
           name: name,
           joinedAt: new Date()
         });
         await roomData.save();
-
-        socket.data.username = name;
-        socket.emit("join-success", { room, name });
-
-        if (name.toLowerCase() === "pain") {
-          console.log(`✅ Creator ${name} successfully joined room ${room}`);
-          socket.emit("message", {
-            name: "System",
-            message: "Welcome, Creator! You have special admin privileges.",
-            timestamp: new Date().toLocaleTimeString()
-          });
-        }
-
-        const userActivity = new UserActivity({
-          username: name,
-          roomId: room,
-          action: 'joined'
-        });
-        await userActivity.save();
-
-        if (!activeRooms.has(room)) {
-          activeRooms.set(room, {
-            name: roomData.name,
-            users: new Map(),
-            createdAt: roomData.createdAt,
-            createdBy: roomData.createdBy,
-            isGlobal: roomData.isGlobal,
-            isPrivate: roomData.isPrivate,
-            isHidden: roomData.isHidden
-          });
-        }
-
-        const activeRoom = activeRooms.get(room);
-        activeRoom.users.set(socket.id, name);
-        socket.join(room);
-
-        const messages = await Message.find({ roomId: room }).sort({ timestamp: 1 }).limit(100);
-        socket.emit("message-history", messages);
-
-        socket.to(room).emit("message", {
-          name: "System",
-          message: `Ghost ${name} joined the room`,
-          timestamp: new Date().toLocaleTimeString()
-        });
-
-        updateRoomList();
-        console.log(`Ghost ${name} joined room ${room}`);
-        return;
       }
-
-      if (roomData.isPrivate) {
-        const existingUser = roomData.users.find(user => user.name === name);
-        if (existingUser) {
-          socket.data.username = name;
-          socket.emit("join-success", { room, name });
-          socket.join(room);
-          console.log(`Ghost ${name} reconnected to private room ${room}`);
-          return;
-        }
-
-        const existingRequest = roomData.pendingJoins.find(req => req.name === name);
-        if (existingRequest) {
-          socket.emit("join-pending", { message: "Your join request is pending approval" });
-          return;
-        }
-
-        roomData.pendingJoins.push({
-          socketId: socket.id,
-          name: name,
-          requestedAt: new Date()
-        });
-        await roomData.save();
-
-        pendingJoinRequests.set(socket.id, {
-          roomId: room,
-          name: name,
-          requestedAt: new Date()
-        });
-
-        const adminUsers = roomData.users.filter(user => 
-          user.name === roomData.createdBy || user.name.toLowerCase() === "pain"
-        );
-
-        adminUsers.forEach(admin => {
-          io.to(admin.socketId).emit("join-request", {
-            socketId: socket.id,
-            name: name,
-            roomId: room,
-            roomName: roomData.name,
-            requestedAt: new Date()
-          });
-        });
-
-        socket.emit("join-pending", { 
-          message: "Join request sent to room admin for approval" 
-        });
-
-        console.log(`Join request from ${name} to room ${room}`);
-        return;
-      }
-
-      roomData.users.push({
-        socketId: socket.id,
-        name: name,
-        joinedAt: new Date()
-      });
-      await roomData.save();
 
       socket.data.username = name;
       socket.emit("join-success", { room, name });
 
+      // Special welcome for creator
       if (name.toLowerCase() === "pain") {
-        console.log(`✅ Creator ${name} successfully joined room ${room}`);
+        console.log(`✅ Creator ${name} joined room ${room}`);
         socket.emit("message", {
           name: "System",
           message: "Welcome, Creator! You have special admin privileges.",
@@ -414,6 +318,7 @@ async function joinRoom(socket, { room, name, isCreator, creatorToken, isHidden 
         });
       }
 
+      // Track user activity
       const userActivity = new UserActivity({
         username: name,
         roomId: room,
@@ -421,6 +326,7 @@ async function joinRoom(socket, { room, name, isCreator, creatorToken, isHidden 
       });
       await userActivity.save();
 
+      // Update active rooms map
       if (!activeRooms.has(room)) {
         activeRooms.set(room, {
           name: roomData.name,
@@ -435,8 +341,10 @@ async function joinRoom(socket, { room, name, isCreator, creatorToken, isHidden 
 
       const activeRoom = activeRooms.get(room);
       activeRoom.users.set(socket.id, name);
+
       socket.join(room);
 
+      // Send message history to the user
       const messages = await Message.find({ roomId: room }).sort({ timestamp: 1 }).limit(100);
       socket.emit("message-history", messages);
 
@@ -560,12 +468,11 @@ async function handleDisconnect(socket, reason) {
 // Remove user messages
 async function removeUserMessages(roomId, username) {
   try {
-    console.log(`Attempting to remove messages by ${username} from ${roomId}`);
     const result = await Message.deleteMany({ 
       roomId: roomId, 
       name: username 
     });
-    console.log(`Database: Removed ${result.deletedCount} messages by ${username} from room ${roomId}`);
+    console.log(`Removed ${result.deletedCount} messages by ${username} from room ${roomId}`);
     return result.deletedCount;
   } catch (error) {
     console.error("Error removing user messages:", error);
@@ -575,11 +482,10 @@ async function removeUserMessages(roomId, username) {
 
 // Notify message removal
 function notifyMessageRemoval(roomId, username) {
-  console.log(`Notifying room ${roomId} to remove messages by ${username}`);
   io.to(roomId).emit("remove-user-messages", { username: username });
   io.to(roomId).emit("message", {
     name: "System",
-    message: `All messages by Ghost ${username} have been removed from the database`,
+    message: `All messages by Ghost ${username} have been removed`,
     timestamp: new Date().toLocaleTimeString()
   });
 }
@@ -610,7 +516,7 @@ app.get("/test", (req, res) => {
   res.json({ message: "Server is running!", timestamp: new Date().toISOString() });
 });
 
-// API routes
+// API to get room list
 app.get("/rooms-api", async (req, res) => {
   try {
     const { username } = req.query;
@@ -622,6 +528,7 @@ app.get("/rooms-api", async (req, res) => {
   }
 });
 
+// API to get message history for a room
 app.get("/messages/:roomId", async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -633,6 +540,7 @@ app.get("/messages/:roomId", async (req, res) => {
   }
 });
 
+// API to check username availability
 app.post("/check-username", async (req, res) => {
   try {
     const { username, creatorToken } = req.body;
@@ -644,6 +552,7 @@ app.post("/check-username", async (req, res) => {
   }
 });
 
+// API for creator verification
 app.post("/creator-verify", async (req, res) => {
   try {
     const { username, creatorToken } = req.body;
@@ -665,7 +574,7 @@ app.post("/creator-verify", async (req, res) => {
   }
 });
 
-// Admin API routes
+// ADMIN API ENDPOINTS
 app.get("/admin/api/stats", async (req, res) => {
   try {
     const { secret } = req.query;
@@ -834,6 +743,27 @@ app.post("/admin/api/unblock-user", async (req, res) => {
   }
 });
 
+// Debug route to check room status
+app.get("/debug/room/:roomId", async (req, res) => {
+  try {
+    const roomId = req.params.roomId;
+    const roomData = await Room.findOne({ roomId: roomId });
+    const activeRoom = activeRooms.get(roomId);
+    
+    res.json({
+      roomExists: !!roomData,
+      roomData: roomData,
+      activeRoom: activeRoom ? {
+        name: activeRoom.name,
+        users: Array.from(activeRoom.users.entries()),
+        userCount: activeRoom.users.size
+      } : null
+    });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
 // Socket.io connection handling
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -842,71 +772,177 @@ io.on("connection", (socket) => {
   const messageTimestamps = [];
 
   socket.on("send-message", async (data) => {
-  const now = Date.now();
-  messageTimestamps.push(now);
-  
-  while (messageTimestamps.length > 0 && now - messageTimestamps[0] > 1000) {
-    messageTimestamps.shift();
-  }
-  
-  if (messageTimestamps.length > ADMIN_CONTROLS.MESSAGE_RATE_LIMIT) {
-    socket.emit("message-error", { error: "Message rate limit exceeded" });
-    return;
-  }
-  
-  try {
-    const { room, name, message } = data;
+    const now = Date.now();
+    messageTimestamps.push(now);
     
-    const isBlocked = await BlockedUser.findOne({ username: name, roomId: room });
-    if (isBlocked) {
-      socket.emit("blocked", { reason: isBlocked.reason });
+    while (messageTimestamps.length > 0 && now - messageTimestamps[0] > 1000) {
+      messageTimestamps.shift();
+    }
+    
+    if (messageTimestamps.length > ADMIN_CONTROLS.MESSAGE_RATE_LIMIT) {
+      socket.emit("message-error", { error: "Message rate limit exceeded" });
       return;
     }
     
-    const isGlobal = room === GLOBAL_ROOM_ID;
-    const expiresAt = getExpirationTime(isGlobal);
-    
-    const newMessage = new Message({
-      roomId: room,
-      name,
-      message,
-      timestamp: new Date(),
-      expiresAt
-    });
-    
-    await newMessage.save();
-    
-    // ✅ FIX: Use io.to() instead of socket.to() to broadcast to ALL users in the room
-    io.to(room).emit("message", { 
-      name: name,
-      message: message,
-      timestamp: new Date().toLocaleTimeString(),
-      isSelf: false // Client will handle showing "You" for their own messages
-    });
-    
-    console.log(`📢 Message broadcast to room ${room}: ${name}: ${message}`);
-    
-  } catch (error) {
-    console.error("Error saving message:", error);
-  }
-});
-
-socket.on("join-room", async (data) => {
-  if (data.creatorToken) {
-    creatorTokens[socket.id] = data.creatorToken;
-  }
-  await joinRoom(socket, {
-    ...data,
-    creatorToken: creatorTokens[socket.id]
+    try {
+      const { room, name, message } = data;
+      
+      const isBlocked = await BlockedUser.findOne({ username: name, roomId: room });
+      if (isBlocked) {
+        socket.emit("blocked", { reason: isBlocked.reason });
+        return;
+      }
+      
+      const isGlobal = room === GLOBAL_ROOM_ID;
+      const expiresAt = getExpirationTime(isGlobal);
+      
+      const newMessage = new Message({
+        roomId: room,
+        name,
+        message,
+        timestamp: new Date(),
+        expiresAt
+      });
+      
+      await newMessage.save();
+      
+      // ✅ FIX: Broadcast to ALL users in the room
+      io.to(room).emit("message", { 
+        name: name,
+        message: message,
+        timestamp: new Date().toLocaleTimeString(),
+        isSelf: false
+      });
+      
+      console.log(`📢 Message broadcast to room ${room}: ${name}: ${message}`);
+      
+    } catch (error) {
+      console.error("Error saving message:", error);
+    }
   });
-});
 
-socket.on("leave-room", async (data) => await leaveRoom(socket, data));
+  // Handle join request approvals
+  // socket.on("approve-join-request", async (data) => {
+  //   try {
+  //     const { requestSocketId, roomId } = data;
+      
+  //     const roomData = await Room.findOne({ roomId: roomId });
+  //     if (!roomData) {
+  //       socket.emit("request-error", { error: "Room not found" });
+  //       return;
+  //     }
 
-socket.on("disconnect", async (reason) => {
-  delete creatorTokens[socket.id];
-  await handleDisconnect(socket, reason);
-});
+  //     const isAdmin = roomData.users.some(user => 
+  //       user.socketId === socket.id && 
+  //       (user.name === roomData.createdBy || user.name.toLowerCase() === "pain")
+  //     );
+
+  //     if (!isAdmin) {
+  //       socket.emit("request-error", { error: "Only room admins can approve join requests" });
+  //       return;
+  //     }
+
+  //     const requestIndex = roomData.pendingJoins.findIndex(req => req.socketId === requestSocketId);
+  //     if (requestIndex === -1) {
+  //       socket.emit("request-error", { error: "Join request not found" });
+  //       return;
+  //     }
+
+  //     const request = roomData.pendingJoins[requestIndex];
+      
+  //     roomData.users.push({
+  //       socketId: request.socketId,
+  //       name: request.name,
+  //       joinedAt: new Date()
+  //     });
+      
+  //     roomData.pendingJoins.splice(requestIndex, 1);
+  //     await roomData.save();
+
+  //     pendingJoinRequests.delete(requestSocketId);
+
+  //     io.to(requestSocketId).emit("join-approved", { 
+  //       room: roomId, 
+  //       name: request.name 
+  //     });
+
+  //     io.to(roomId).emit("message", {
+  //       name: "System",
+  //       message: `Ghost ${request.name} joined the room`,
+  //       timestamp: new Date().toLocaleTimeString()
+  //     });
+
+  //     updateRoomList();
+
+  //     console.log(`Join request approved for ${request.name} in room ${roomId}`);
+  //   } catch (error) {
+  //     console.error("Error approving join request:", error);
+  //     socket.emit("request-error", { error: "Failed to approve join request" });
+  //   }
+  // });
+
+  // Handle join request rejections
+  // socket.on("reject-join-request", async (data) => {
+  //   try {
+  //     const { requestSocketId, roomId } = data;
+      
+  //     const roomData = await Room.findOne({ roomId: roomId });
+  //     if (!roomData) {
+  //       socket.emit("request-error", { error: "Room not found" });
+  //       return;
+  //     }
+
+  //     const isAdmin = roomData.users.some(user => 
+  //       user.socketId === socket.id && 
+  //       (user.name === roomData.createdBy || user.name.toLowerCase() === "pain")
+  //     );
+
+  //     if (!isAdmin) {
+  //       socket.emit("request-error", { error: "Only room admins can reject join requests" });
+  //       return;
+  //     }
+
+  //     const requestIndex = roomData.pendingJoins.findIndex(req => req.socketId === requestSocketId);
+  //     if (requestIndex === -1) {
+  //       socket.emit("request-error", { error: "Join request not found" });
+  //       return;
+  //     }
+
+  //     const request = roomData.pendingJoins[requestIndex];
+      
+  //     roomData.pendingJoins.splice(requestIndex, 1);
+  //     await roomData.save();
+
+  //     pendingJoinRequests.delete(requestSocketId);
+
+  //     io.to(requestSocketId).emit("join-rejected", { 
+  //       room: roomId, 
+  //       reason: "Your join request was rejected by the room admin" 
+  //     });
+
+  //     console.log(`Join request rejected for ${request.name} in room ${roomId}`);
+  //   } catch (error) {
+  //     console.error("Error rejecting join request:", error);
+  //     socket.emit("request-error", { error: "Failed to reject join request" });
+  //   }
+  // });
+
+  socket.on("join-room", async (data) => {
+    if (data.creatorToken) {
+      creatorTokens[socket.id] = data.creatorToken;
+    }
+    await joinRoom(socket, {
+      ...data,
+      creatorToken: creatorTokens[socket.id]
+    });
+  });
+
+  socket.on("leave-room", async (data) => await leaveRoom(socket, data));
+  
+  socket.on("disconnect", async (reason) => {
+    delete creatorTokens[socket.id];
+    await handleDisconnect(socket, reason);
+  });
 });
 
 // Schedule cleanup jobs
